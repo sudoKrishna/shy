@@ -1,9 +1,9 @@
 export type Role = "user" | "assistant" | "tool";
 
-export interface Message {
-    role : Role;
-    content : string
-}
+// export interface Message {
+//     role : Role;
+//     content : string
+// }
 
 export interface ToolDefinition  {
     name : string;
@@ -14,7 +14,17 @@ export interface ToolDefinition  {
         required : string[];
     }
 }
-
+export type Message = | {
+    role : "user";
+    content : string;
+} | {
+    role : "assistant";
+    content : string
+} | {
+    role : "tool";
+    content : string;
+    tool_call_id : string
+}
 export interface ToolCall {
     id : string;
     name : string;
