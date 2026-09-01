@@ -18,7 +18,7 @@ export function getApiKey(): string {
 export function buildConfig(overrides : Partial<AgentConfig> & Pick<AgentConfig, "systemPrompt" | "tools">) : AgentConfig {
 return {
     model : DEFAULT_MODEL,
-    maxiteration : DEFAULT_MAX_ITERATIONS,
+    maxIterations : DEFAULT_MAX_ITERATIONS,
     maxOutputTokens : DEFAULT_MAX_OUTPUT_TOKENS,
     temperature : DEFAULT_TEMPERATURE,
     ...overrides

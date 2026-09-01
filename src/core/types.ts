@@ -4,8 +4,8 @@ export interface Message {
     role : Role;
     content : string;
     toolCalls? : ToolCall[];
-    toolCallId : string;
-    name : string
+    toolCallId? : string;
+    name? : string
 }
 
 export interface ToolCall {
@@ -54,7 +54,7 @@ export interface AgentConfig {
     model : string;
     systemPrompt : string;
     tools : ToolDefinition[];
-    maxiteration : number;
+    maxIterations : number;
     maxOutputTokens : number;
     temperature : number;
 }
