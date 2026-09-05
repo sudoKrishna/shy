@@ -8,7 +8,7 @@ function truncate(text : string) {
     return text.slice(0, MAX_OUTPUT_LENGTH) + "\n...(truncate)"
 }
 
-const bashTool : ToolDefinition = {
+export const bashTool : ToolDefinition = {
     name : "bash",
     description : "Runs a sell command and returns stdout , stderr , and exit code",
     parameters : {
