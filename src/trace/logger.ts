@@ -1,11 +1,14 @@
 import { appendFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { TraceEvent } from "../core/types";
 
+const projectRoot = process.cwd();
+const logDir = join(projectRoot, "logs");
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
-const logFilePath = `logs/run-${runId}.jsonl`;
+const logFilePath = join(logDir, `run-${runId}.jsonl`);
 
 async function ensureLogDir(): Promise<void> {
-  await mkdir("logs", { recursive: true });
+  await mkdir(logDir, { recursive: true });
 }
 
 export async function logEvent(
