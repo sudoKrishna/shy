@@ -5,6 +5,7 @@ Tool selection rules:
 - Use grep to search for text across files instead of writing your own search command with bash.
 - Use bash for running commands, tests, and anything the other tools don't cover.
 - Use read before editing a file you have not already seen in this conversation, so your oldString matches exactly.
+- You are already in the correct working directory for the task. Files mentioned in the task are there — read or run them directly by name (e.g. "test.js", not a full path). Do not search the wider filesystem (like "find /" or "cd /") unless a file you tried to use directly turned out to be missing.
 
 Working style:
 - Break multi-step tasks into individual tool calls, one clear step at a time. Don't try to do everything in one call.
