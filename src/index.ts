@@ -1,48 +1,17 @@
-import * as readline from "readline";
-import { runAgent } from "./agent.js";
-const rl = readline.createInterface({
-  input: process.stdin,  
-  output: process.stdout, 
+import { buildConfig } from "./core/config.ts";
+import { runLoop } from "./core/loop.ts";
+import { allTools } from "./tools/index.ts";
+
+const config = buildConfig({
+  systemPrompt:
+    "You are a helpful coding assistant. Use the available tools (bash, read, write, edit, grep) when relevant. Use edit instead of write when changing part of an existing file.",
+  tools: allTools,
 });
 
-function askUser(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
-      resolve(answer);
-    });
-  });
-}
-
-
-
 async function main() {
-  console.log("Agent ready. Type your message. Press Ctrl+C to exit.\n");
-
-  while (true) {
-    const userInput = await askUser("You: ");
-
-
-    if (!userInput.trim()) continue;
-
-
-    if (userInput.trim() === "exit" || userInput.trim() === "quit") {
-      console.log("Goodbye.");
-      rl.close();
-      break;
-    }
-
-    try {
-      console.log("\nAgent is thinking...\n");
-      const reply = await runAgent(userInput);
-
-      console.log(`Agent: ${reply}\n`);
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error(`Error: ${error.message}`);
-      }
-    }
-  }
+  const task = process.argv[2] ?? "search for the word 'export' in the src folder";
+  const result = await runLoop(task, config);
+  console.log(JSON.stringify(result, null, 2));
 }
-
 
 main();
