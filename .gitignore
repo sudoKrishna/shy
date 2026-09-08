@@ -32,3 +32,16 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# eval runs generate output files inside each task dir at runtime —
+# keep only the fixtures (prompt.md, setup.sh, check.sh)
+evals/tasks/*/*
+!evals/tasks/*/prompt.md
+!evals/tasks/*/setup.sh
+!evals/tasks/*/check.sh
+evals/results/
+
+# swebench: local venv + cloned repos + regenerated predictions
+.swebench-venv/
+swebench/workdirs/
+swebench/predictions.jsonl
