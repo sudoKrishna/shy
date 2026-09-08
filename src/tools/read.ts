@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import type { ToolDefinition } from "../core/types";
 
 const MAX_OUTPUT_LENGTH = 5000;
@@ -21,15 +22,12 @@ export const readTool: ToolDefinition = {
     const filePath = args.filePath as string;
 
     try {
-      const file = Bun.file(filePath);
-      const exists = await file.exists();
-      if (!exists) {
-        return `file not found: ${filePath}`;
-      }
-
-      const content = await file.text();
+      const content = await readFile(filePath, "utf-8");
       return truncate(content);
     } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return `file not found: ${filePath}`;
+      }
       return `failed to read file: ${err instanceof Error ? err.message : String(err)}`;
     }
   },

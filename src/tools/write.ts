@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import type { ToolDefinition } from "../core/types";
 
 export const writeTool: ToolDefinition = {
@@ -17,7 +18,8 @@ export const writeTool: ToolDefinition = {
     const content = args.content as string;
 
     try {
-      const bytesWritten = await Bun.write(filePath, content);
+      await writeFile(filePath, content, "utf-8");
+      const bytesWritten = Buffer.byteLength(content, "utf-8");
       return `wrote ${bytesWritten} bytes to ${filePath}`;
     } catch (err) {
       return `failed to write file: ${err instanceof Error ? err.message : String(err)}`;

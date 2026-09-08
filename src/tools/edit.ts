@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import type { ToolDefinition } from "../core/types";
 
 export const editTool: ToolDefinition = {
@@ -19,13 +20,16 @@ export const editTool: ToolDefinition = {
     const newString = args.newString as string;
 
     try {
-      const file = Bun.file(filePath);
-      const exists = await file.exists();
-      if (!exists) {
-        return `file not found: ${filePath}`;
+      let content: string;
+      try {
+        content = await readFile(filePath, "utf-8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          return `file not found: ${filePath}`;
+        }
+        throw err;
       }
 
-      const content = await file.text();
       const occurrences = content.split(oldString).length - 1;
 
       if (occurrences === 0) {
@@ -36,7 +40,7 @@ export const editTool: ToolDefinition = {
       }
 
       const updated = content.replace(oldString, newString);
-      await Bun.write(filePath, updated);
+      await writeFile(filePath, updated, "utf-8");
 
       return `edited ${filePath}`;
     } catch (err) {

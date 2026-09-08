@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import type { ToolDefinition } from "../core/types";
 
 const MAX_OUTPUT_LENGTH = 5000;
@@ -20,36 +21,47 @@ export const grepTool: ToolDefinition = {
     },
     required: ["pattern"],
   },
-  execute: async (args) => {
+  execute: (args) => {
     const pattern = args.pattern as string;
     const path = (args.path as string | undefined) ?? ".";
 
-    const proc = Bun.spawn(
-      ["grep", "-rn", "--exclude-dir=node_modules", "--exclude-dir=.git", pattern, path],
-      { stdout: "pipe", stderr: "pipe" }
-    );
+    return new Promise((resolve) => {
+      const proc = spawn("grep", ["-rn", "--exclude-dir=node_modules", "--exclude-dir=.git", pattern, path]);
+      let stdout = "";
+      let stderr = "";
+      let timedOut = false;
 
-    const timeout = setTimeout(() => {
-      proc.kill();
-    }, TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        timedOut = true;
+        proc.kill();
+      }, TIMEOUT_MS);
 
-    try {
-      const exitCode = await proc.exited;
-      const stdout = await new Response(proc.stdout).text();
-      const stderr = await new Response(proc.stderr).text();
+      proc.stdout.on("data", (chunk) => (stdout += chunk));
+      proc.stderr.on("data", (chunk) => (stderr += chunk));
 
-      if (exitCode === 1 && stdout.length === 0) {
-        return "no matches found";
-      }
-      if (exitCode > 1) {
-        return `grep failed: ${stderr}`;
-      }
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        resolve(`failed to run grep: ${err.message}`);
+      });
 
-      return truncate(stdout);
-    } catch (err) {
-      return `failed to run grep: ${err instanceof Error ? err.message : String(err)}`;
-    } finally {
-      clearTimeout(timeout);
-    }
+      proc.on("close", (exitCode) => {
+        clearTimeout(timer);
+
+        if (timedOut) {
+          resolve(`grep timed out after ${TIMEOUT_MS / 1000}s`);
+          return;
+        }
+        if (exitCode === 1 && stdout.length === 0) {
+          resolve("no matches found");
+          return;
+        }
+        if ((exitCode ?? 0) > 1) {
+          resolve(`grep failed: ${stderr}`);
+          return;
+        }
+
+        resolve(truncate(stdout));
+      });
+    });
   },
 };
