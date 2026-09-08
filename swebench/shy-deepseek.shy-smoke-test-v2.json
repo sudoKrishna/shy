@@ -1,0 +1,40 @@
+{
+    "total_instances": 3,
+    "submitted_instances": 3,
+    "completed_instances": 2,
+    "resolved_instances": 2,
+    "unresolved_instances": 0,
+    "infra_failure_instances": 0,
+    "ambiguous_failure_instances": 0,
+    "empty_patch_instances": 1,
+    "error_instances": 0,
+    "completed_ids": [
+        "sympy__sympy-17139",
+        "sympy__sympy-18057"
+    ],
+    "incomplete_ids": [],
+    "empty_patch_ids": [
+        "pytest-dev__pytest-6116"
+    ],
+    "submitted_ids": [
+        "pytest-dev__pytest-6116",
+        "sympy__sympy-17139",
+        "sympy__sympy-18057"
+    ],
+    "resolved_ids": [
+        "sympy__sympy-17139",
+        "sympy__sympy-18057"
+    ],
+    "unresolved_ids": [],
+    "infra_failure_ids": [],
+    "ambiguous_failure_ids": [],
+    "failure_reasons": {},
+    "error_ids": [],
+    "schema_version": 2,
+    "unstopped_instances": 0,
+    "unstopped_containers": [],
+    "unremoved_images": [
+        "swebench/sweb.eval.x86_64.sympy_1776_sympy-17139:latest",
+        "swebench/sweb.eval.x86_64.sympy_1776_sympy-18057:latest"
+    ]
+}
