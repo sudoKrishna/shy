@@ -57,7 +57,9 @@ task ──> system prompt + tools ──> LLM call ──> tool calls?
   would eventually blow past the model's context window.
 - **`src/tools/`** — `bash`, `read`, `write`, `edit`, `grep`. Each is a plain
   `{ name, description, parameters, execute }` object; the loop doesn't know or
-  care what a tool does internally.
+  care what a tool does internally. Built on Node's `child_process`/`fs`
+  (not Bun-only APIs) so the same harness runs unmodified under the Bun CLI
+  and inside Next.js API routes.
 - **`src/trace/logger.ts`** — every model call, tool call, and compaction event
   is appended as JSONL to `logs/`, and also broadcast live over an in-process
   event emitter (used by the demo UI).
@@ -76,13 +78,15 @@ bun run start "find all TODOs in src and count them"
 ### Live demo UI
 
 ```bash
+ln -sf ../.env web/.env   # first time only, so Next.js can see DEEPSEEK_API_KEY
 bun run demo
-# open http://localhost:3939
+# open http://localhost:3000
 ```
 
-A small Bun server (`server.ts`) streams every trace event over SSE to a browser
-UI (`public/`) — watch the loop reason, call tools, and answer in real time,
-with per-run token/iteration stats.
+A Next.js app (`web/`) whose API routes (`web/app/api/run`, `web/app/api/meta`)
+import the harness directly and stream every trace event over SSE to the
+browser — watch the loop reason, call tools, and answer in real time, with
+per-run token/iteration stats.
 
 ### Eval suite
 
@@ -148,6 +152,9 @@ evals/
 swebench/
   run.ts               agent <-> SWE-bench adapter
   select_instances.py  dataset sampling
-public/                demo UI (served by server.ts)
-server.ts              SSE server for the live demo
+web/                   Next.js demo UI
+  app/api/run/         SSE endpoint — runs the loop, streams trace events
+  app/api/meta/        system prompt + tool list
+  app/page.tsx          chat/terminal UI
+  lib/agent.ts          shared config, imports the harness from ../src
 ```
