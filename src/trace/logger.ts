@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { TraceEvent } from "../core/types";
+import { traceEmitter } from "./emitter";
 
 const projectRoot = process.cwd();
 const logDir = join(projectRoot, "logs");
@@ -24,6 +25,8 @@ export async function logEvent(
   };
 
   const line = JSON.stringify(event) + "\n";
+
+  traceEmitter.emit("event", event);
 
   try {
     await ensureLogDir();
