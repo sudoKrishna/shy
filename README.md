@@ -28,8 +28,8 @@ multi-file grep/reasoning, bug-fixing, ambiguous instructions).
 | No fix attempted (empty patch) | 9 | 50% |
 | Infra error (patch looked correct) | 1 | 6% |
 
-<!-- screenshot the results artifact and save it as swebench/results.png, then
-uncomment: ![results](./swebench/results.png) -->
+
+![Project screenshot](image/bench.png)
 
 Full report: `swebench/shy-deepseek.shy-bigrun-15.json`,
 `swebench/shy-deepseek.shy-smoke-test-v2.json`.
