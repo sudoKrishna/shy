@@ -66,39 +66,72 @@ function mapStopReason(reason: string): ModelResponse["stopReason"] {
   return "error";
 }
 
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 500;
+
+function isRetryable(err: unknown): boolean {
+  if (err instanceof OpenAI.APIConnectionError || err instanceof OpenAI.APIConnectionTimeoutError) {
+    return true;
+  }
+  if (err instanceof OpenAI.APIError && typeof err.status === "number") {
+    return err.status === 429 || err.status >= 500;
+  }
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function callModel(
   messages: Message[],
   config: AgentConfig
 ): Promise<ModelResponse> {
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages: toApiMessages(messages),
-    tools: config.tools.length ? toApiTools(config.tools) : undefined,
-    max_tokens: config.maxOutputTokens,
-    temperature: config.temperature,
-  });
+  let lastErr: unknown;
 
-  const choice = response.choices[0];
-  if (!choice) {
-    throw new Error("Model returned no choices");
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await client.chat.completions.create({
+        model: config.model,
+        messages: toApiMessages(messages),
+        tools: config.tools.length ? toApiTools(config.tools) : undefined,
+        max_tokens: config.maxOutputTokens,
+        temperature: config.temperature,
+      });
+
+      const choice = response.choices[0];
+      if (!choice) {
+        throw new Error("Model returned no choices");
+      }
+
+      const rawToolCalls = choice.message.tool_calls ?? [];
+      const toolCalls: ToolCall[] = rawToolCalls
+        .filter((tc): tc is OpenAI.Chat.ChatCompletionMessageFunctionToolCall => tc.type === "function")
+        .map((tc) => ({
+          id: tc.id,
+          name: tc.function.name,
+          arguments: safeParseArgs(tc.function.arguments),
+        }));
+
+      return {
+        content: choice.message.content,
+        toolCalls,
+        usage: {
+          inputTokens: response.usage?.prompt_tokens ?? 0,
+          outputTokens: response.usage?.completion_tokens ?? 0,
+        },
+        stopReason: mapStopReason(choice.finish_reason),
+      };
+    } catch (err) {
+      lastErr = err;
+      if (attempt === MAX_RETRIES || !isRetryable(err)) {
+        throw err;
+      }
+      const delayMs = BASE_DELAY_MS * 2 ** attempt;
+      console.error(`callModel attempt ${attempt + 1} failed, retrying in ${delayMs}ms:`, err instanceof Error ? err.message : err);
+      await sleep(delayMs);
+    }
   }
 
-  const rawToolCalls = choice.message.tool_calls ?? [];
-  const toolCalls: ToolCall[] = rawToolCalls
-    .filter((tc): tc is OpenAI.Chat.ChatCompletionMessageFunctionToolCall => tc.type === "function")
-    .map((tc) => ({
-      id: tc.id,
-      name: tc.function.name,
-      arguments: safeParseArgs(tc.function.arguments),
-    }));
-
-  return {
-    content: choice.message.content,
-    toolCalls,
-    usage: {
-      inputTokens: response.usage?.prompt_tokens ?? 0,
-      outputTokens: response.usage?.completion_tokens ?? 0,
-    },
-    stopReason: mapStopReason(choice.finish_reason),
-  };
+  throw lastErr;
 }
