@@ -45,7 +45,7 @@ export interface ModelResponse {
 
 export interface TraceEvent {
     timestamp : string;
-    type :  "model_calls" | "tool_call" | "loop_start" | "loop_end" | "error";
+    type :  "model_calls" | "tool_call" | "loop_start" | "loop_end" | "error" | "context_compacted";
     iteration : number;
     data : Record<string , unknown>
 }
@@ -57,4 +57,6 @@ export interface AgentConfig {
     maxIterations : number;
     maxOutputTokens : number;
     temperature : number;
+    maxContextTokens : number;
+    compactionThreshold : number;
 }

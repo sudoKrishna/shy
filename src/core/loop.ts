@@ -1,9 +1,10 @@
 import { logEvent } from "../trace/logger";
 import { callModel } from "./llm";
+import { shouldCompact, compactMessages } from "./context";
 import type { AgentConfig, Message, ToolResult } from "./types";
 
 export async function runLoop(userInput : string , config : AgentConfig) {
- const message : Message[] = [
+ let message : Message[] = [
     {role  : "system" , content : config.systemPrompt},
     {role : "user"  , content : userInput}
  ]
@@ -11,6 +12,12 @@ export async function runLoop(userInput : string , config : AgentConfig) {
  await logEvent("loop_start", 0 , {userInput})
  let iteration = 0;
  while (iteration < config.maxIterations) {
+    if (shouldCompact(message, config)) {
+        const { messages: compacted, beforeCount, afterCount } = await compactMessages(message, config);
+        message = compacted;
+        await logEvent("context_compacted", iteration, { beforeCount, afterCount });
+    }
+
     let response = await callModel(message , config);
      
     await logEvent("model_calls", iteration , {
@@ -42,7 +49,7 @@ export async function runLoop(userInput : string , config : AgentConfig) {
         throw new Error("Model returned an error stop reason")
     }
 
-    for(const call of response.toolCalls){
+    const results = await Promise.all(response.toolCalls.map(async (call) => {
         const tool = config.tools.find((t) =>  t.name === call.name);
         const startedAt = Date.now();
 
@@ -75,6 +82,9 @@ export async function runLoop(userInput : string , config : AgentConfig) {
                 }
             }
         }
+        return {call, result};
+    }));
+    for (const {call , result} of results ) {
         await logEvent("tool_call", iteration, {
             name : call.name,
             arguments : call.arguments,
