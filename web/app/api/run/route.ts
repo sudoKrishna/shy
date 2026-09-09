@@ -1,10 +1,27 @@
 import { agentConfig, buildRunConfig, runLoop, traceEmitter, type TraceEvent } from "../../../lib/agent";
+import { checkRateLimit } from "../../../lib/rate-limit";
 
 function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+function getClientIp(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0]!.trim();
+  return "unknown";
+}
+
 export async function POST(req: Request) {
+  const ip = getClientIp(req);
+  const { allowed, retryAfterSeconds } = checkRateLimit(ip);
+
+  if (!allowed) {
+    return new Response(`rate limit exceeded, try again in ${retryAfterSeconds}s`, {
+      status: 429,
+      headers: { "Retry-After": String(retryAfterSeconds) },
+    });
+  }
+
   const body = await req.json().catch(() => ({}));
   const task = String((body as { task?: unknown }).task ?? "").trim();
   const apiKey = String((body as { apiKey?: unknown }).apiKey ?? "").trim() || agentConfig.apiKey;
