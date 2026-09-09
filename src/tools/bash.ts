@@ -3,10 +3,38 @@ import type { ToolDefinition } from "../core/types";
 
 const MAX_OUTPUT_LENGTH = 5000;
 const TIMEOUT_MS = 30000;
+const riskyCommandPatterns: RegExp[] = [
+    // Destructive filesystem / disk operations — only when the target is
+    // exactly the root, home, cwd, parent dir, or a bare wildcard (not any
+    // path that merely starts with "/", "~", ".", etc.)
+    /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|--recursive(?:\s+--force)?)\s+(?:\/|~|\*|\.{1,2})\/?(?=\s|;|&|\||$)/i,
+    /\bmkfs(?:\.[a-z0-9_-]+)?\b/i,
+    /\bdd\b(?=[\s\S]*\bof\s*=\s*\/dev\/)/i,
+
+    // Fork bomb
+    /:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/,
+
+    // Common infinite loops
+    /\bwhile\s*\(\s*(?:true|:|\[\s*\])\s*\)\s*;\s*do\b/i,
+    /\bwhile\s+true\s*;?\s*do\b/i,
+
+    // Remote script execution
+    /\b(?:curl|wget)\b[\s\S]*\|\s*(?:sh|bash|zsh|ksh|fish)\b/i,
+
+    // Recursive permission changes
+    /\bchmod\s+(?:-[a-zA-Z]*R[a-zA-Z]*\s+)?(?:777|a+rwx)\s+(?:\/|~|\*)/i,
+];
 
 function truncate(text: string) {
     if (text.length <= MAX_OUTPUT_LENGTH) return text;
     return text.slice(0, MAX_OUTPUT_LENGTH) + "\n...(truncate)";
+}
+
+function isRiskyCommand(command : string) : boolean {
+    return riskyCommandPatterns.some((pattern) => {
+        pattern.lastIndex = 0;
+        return pattern.test(command)
+    })
 }
 
 export const bashTool: ToolDefinition = {
@@ -19,8 +47,12 @@ export const bashTool: ToolDefinition = {
         },
         required: ["command"],
     },
-    execute: (args) => {
+    execute: async (args) => {
         const command = args.command as string;
+
+        if (isRiskyCommand(command)) {
+            return "blocked: this command looks destructive or unsafe and was not executed";
+        }
         const timeoutSeconds = Math.ceil(TIMEOUT_MS / 1000);
 
         return new Promise((resolve) => {
