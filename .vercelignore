@@ -1,0 +1,9 @@
+swebench/workdirs
+.swebench-venv
+logs
+evals/results
+evals/tasks
+node_modules
+.next
+.git
+*.log

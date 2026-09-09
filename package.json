@@ -6,6 +6,7 @@
     "start": "bun run src/index.ts",
     "demo": "cd web && bun run dev"
   },
+  "workspaces": ["web"],
   "private": true,
   "devDependencies": {
     "@types/bun": "latest"
