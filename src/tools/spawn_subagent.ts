@@ -2,6 +2,7 @@ import { runLoop } from "../core/loop";
 import type { AgentConfig, ToolDefinition } from "../core/types";
 
 const MAX_RESULT_LENGTH = 3000;
+const MAX_SUBAGENT_SPAWNS = 5;
 
 const SUBAGENT_SYSTEM_PROMPT =
   "You are a focused sub-agent completing one specific, narrow step of a larger task. " +
@@ -16,8 +17,9 @@ function truncate(text: string): string {
 }
 
 export function createSpawnSubagentTool(parentConfig: AgentConfig): ToolDefinition {
-
   const subagentTools = parentConfig.tools.filter((t) => t.name !== "spawn_subagent");
+
+  let spawnCount = 0;
 
   return {
     name: "spawn_subagent",
@@ -44,6 +46,11 @@ export function createSpawnSubagentTool(parentConfig: AgentConfig): ToolDefiniti
       required: ["task"],
     },
     execute: async (args) => {
+      if (spawnCount >= MAX_SUBAGENT_SPAWNS) {
+        return `sub-agent limit reached (${MAX_SUBAGENT_SPAWNS} per run) — continue directly with the available tools instead of delegating further.`;
+      }
+      spawnCount++;
+
       const task = args.task as string;
       const context = args.context as string | undefined;
 
