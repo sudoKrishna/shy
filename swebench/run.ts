@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { buildConfig } from "../src/core/config";
 import { runLoop } from "../src/core/loop";
-import { allTools } from "../src/tools/index";
+import { baseTools } from "../src/tools/index";
 import { systemPrompt } from "../src/prompts/system";
 
 interface Instance {
@@ -21,7 +21,9 @@ const predictionsPath = join(projectRoot, "swebench/predictions.jsonl");
 const instances: Instance[] = JSON.parse(readFileSync(dataPath, "utf-8"));
 mkdirSync(workRoot, { recursive: true });
 
-const config = buildConfig({ systemPrompt, tools: allTools });
+// deliberately no spawn_subagent here, to keep results comparable with the
+// earlier baseline runs (adding it would change what's being measured)
+const config = buildConfig({ systemPrompt, tools: baseTools });
 const predictions: string[] = [];
 
 for (const inst of instances) {

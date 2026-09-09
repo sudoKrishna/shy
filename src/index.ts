@@ -1,12 +1,14 @@
 import { buildConfig } from "./core/config.ts";
 import { runLoop } from "./core/loop.ts";
-import { allTools } from "./tools/index.ts";
+import { baseTools, withSubagent } from "./tools/index.ts";
 import { systemPrompt } from "./prompts/system.ts";
 
-const config = buildConfig({
-  systemPrompt,
-  tools: allTools,
-});
+const config = withSubagent(
+  buildConfig({
+    systemPrompt,
+    tools: baseTools,
+  })
+);
 
 async function main() {
   const task = process.argv[2] ?? "search for the word 'export' in the src folder";

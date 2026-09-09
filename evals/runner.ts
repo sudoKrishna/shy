@@ -4,7 +4,7 @@ import { readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { buildConfig } from "../src/core/config.ts";
 import { runLoop } from "../src/core/loop.ts";
-import { allTools } from "../src/tools/index.ts";
+import { baseTools, withSubagent } from "../src/tools/index.ts";
 import { systemPrompt } from "../src/prompts/system.ts";
 
 interface TaskResult {
@@ -36,10 +36,12 @@ const taksFolder = tasks
     .map((entry) => entry.name)
 
 
-const config = buildConfig({
-    systemPrompt,
-    tools: allTools,
-});
+const config = withSubagent(
+    buildConfig({
+        systemPrompt,
+        tools: baseTools,
+    })
+);
 
 const results: TaskResult[] = [];
 

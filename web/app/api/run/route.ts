@@ -1,4 +1,4 @@
-import { agentConfig, runLoop, traceEmitter, type TraceEvent } from "../../../lib/agent";
+import { agentConfig, buildRunConfig, runLoop, traceEmitter, type TraceEvent } from "../../../lib/agent";
 
 function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -7,10 +7,16 @@ function sseFrame(event: string, data: unknown): string {
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const task = String((body as { task?: unknown }).task ?? "").trim();
+  const apiKey = String((body as { apiKey?: unknown }).apiKey ?? "").trim() || agentConfig.apiKey;
 
   if (!task) {
     return new Response("task is required", { status: 400 });
   }
+  if (!apiKey) {
+    return new Response("apiKey is required", { status: 400 });
+  }
+
+  const runConfig = buildRunConfig({ apiKey });
 
   const stream = new ReadableStream({
     start(controller) {
@@ -22,7 +28,7 @@ export async function POST(req: Request) {
 
       traceEmitter.on("event", onTrace);
 
-      runLoop(task, agentConfig)
+      runLoop(task, runConfig)
         .then((result) => {
           controller.enqueue(encoder.encode(sseFrame("done", result)));
         })
