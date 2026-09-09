@@ -15,24 +15,26 @@ multi-file grep/reasoning, bug-fixing, ambiguous instructions).
 
 **SWE-bench Lite** (18 real GitHub issues, official Docker-based evaluation):
 
-- **8/18 resolved (44%)**
-- **8/9 (89%) resolved whenever the agent produced a patch at all** — most
-  misses were the agent running out of iterations on large repos (Django,
-  matplotlib) before finding the right file, not producing a wrong fix.
-- One additional instance had a genuinely correct patch that the evaluation
-  harness itself failed to score (a host locale bug, unrelated to the agent).
+- **10/18 resolved (56%)**, up from 8/18 (44%) on the same instances before
+  context compaction, parallel tool calls, retry/backoff, and Node-based
+  (portable) tools were added — no task-specific tuning, just harness
+  improvements.
+- **10/12 (83%) resolved whenever the agent produced a patch at all** — the
+  agent now attempts a fix on 12/18 instead of 9/18; most remaining misses are
+  the agent running out of iterations on large repos (Django, matplotlib)
+  before finding the right file.
 
 | Outcome | Count | Share |
 |---|---|---|
-| Resolved | 8 | 44% |
-| No fix attempted (empty patch) | 9 | 50% |
-| Infra error (patch looked correct) | 1 | 6% |
-
+| Resolved | 10 | 56% |
+| No fix attempted (empty patch) | 6 | 33% |
+| Unresolved (wrong fix) | 2 | 11% |
 
 ![Project screenshot](image/bench.png)
 
-Full report: `swebench/shy-deepseek.shy-bigrun-15.json`,
-`swebench/shy-deepseek.shy-smoke-test-v2.json`.
+Full reports: `swebench/shy-deepseek.shy-rerun-18.json` (current run), earlier
+baseline in `swebench/shy-deepseek.shy-bigrun-15.json` +
+`shy-deepseek.shy-smoke-test-v2.json`.
 
 ## Architecture
 
@@ -60,6 +62,12 @@ task ──> system prompt + tools ──> LLM call ──> tool calls?
   care what a tool does internally. Built on Node's `child_process`/`fs`
   (not Bun-only APIs) so the same harness runs unmodified under the Bun CLI
   and inside Next.js API routes.
+- **`src/tools/spawn_subagent.ts`** — delegates an independent sub-task to a
+  fresh agent with its own clean context and system prompt, returning only a
+  short summary to the parent (not the sub-agent's full conversation). Built
+  as a factory (`createSpawnSubagentTool(config)`) rather than a static tool
+  object, since it needs to build a config for the sub-agent to run inside;
+  one level of nesting only — a sub-agent can't spawn one of its own.
 - **`src/trace/logger.ts`** — every model call, tool call, and compaction event
   is appended as JSONL to `logs/`, and also broadcast live over an in-process
   event emitter (used by the demo UI).

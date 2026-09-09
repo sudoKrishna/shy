@@ -1,0 +1,93 @@
+{
+    "total_instances": 18,
+    "submitted_instances": 18,
+    "completed_instances": 11,
+    "resolved_instances": 9,
+    "unresolved_instances": 2,
+    "infra_failure_instances": 0,
+    "ambiguous_failure_instances": 0,
+    "empty_patch_instances": 6,
+    "error_instances": 1,
+    "completed_ids": [
+        "django__django-11422",
+        "django__django-12915",
+        "django__django-13033",
+        "django__django-13315",
+        "django__django-13551",
+        "django__django-14382",
+        "django__django-16408",
+        "django__django-17087",
+        "pytest-dev__pytest-6116",
+        "sympy__sympy-18057",
+        "sympy__sympy-20442"
+    ],
+    "incomplete_ids": [],
+    "empty_patch_ids": [
+        "django__django-11283",
+        "django__django-16816",
+        "matplotlib__matplotlib-23476",
+        "matplotlib__matplotlib-25498",
+        "sphinx-doc__sphinx-8474",
+        "sympy__sympy-17139"
+    ],
+    "submitted_ids": [
+        "django__django-11099",
+        "django__django-11283",
+        "django__django-11422",
+        "django__django-12915",
+        "django__django-13033",
+        "django__django-13315",
+        "django__django-13551",
+        "django__django-14382",
+        "django__django-16408",
+        "django__django-16816",
+        "django__django-17087",
+        "matplotlib__matplotlib-23476",
+        "matplotlib__matplotlib-25498",
+        "pytest-dev__pytest-6116",
+        "sphinx-doc__sphinx-8474",
+        "sympy__sympy-17139",
+        "sympy__sympy-18057",
+        "sympy__sympy-20442"
+    ],
+    "resolved_ids": [
+        "django__django-11422",
+        "django__django-12915",
+        "django__django-13033",
+        "django__django-13315",
+        "django__django-13551",
+        "django__django-14382",
+        "django__django-17087",
+        "pytest-dev__pytest-6116",
+        "sympy__sympy-20442"
+    ],
+    "unresolved_ids": [
+        "django__django-16408",
+        "sympy__sympy-18057"
+    ],
+    "infra_failure_ids": [],
+    "ambiguous_failure_ids": [],
+    "failure_reasons": {},
+    "error_ids": [
+        "django__django-11099"
+    ],
+    "schema_version": 2,
+    "unstopped_instances": 0,
+    "unstopped_containers": [],
+    "unremoved_images": [
+        "swebench/sweb.eval.x86_64.django_1776_django-11099:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-11422:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-12915:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-13033:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-13315:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-13551:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-14382:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-16408:latest",
+        "swebench/sweb.eval.x86_64.django_1776_django-17087:latest",
+        "swebench/sweb.eval.x86_64.matplotlib_1776_matplotlib-25498:latest",
+        "swebench/sweb.eval.x86_64.pytest-dev_1776_pytest-6116:latest",
+        "swebench/sweb.eval.x86_64.sympy_1776_sympy-17139:latest",
+        "swebench/sweb.eval.x86_64.sympy_1776_sympy-18057:latest",
+        "swebench/sweb.eval.x86_64.sympy_1776_sympy-20442:latest"
+    ]
+}
