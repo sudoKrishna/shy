@@ -19,6 +19,8 @@ export function getApiKey(): string {
 export function buildConfig(overrides : Partial<AgentConfig> & Pick<AgentConfig, "systemPrompt" | "tools">) : AgentConfig {
 return {
     model : DEFAULT_MODEL,
+    baseURL : DEFAULT_BASE_URL,
+    apiKey : process.env.DEEPSEEK_API_KEY,
     maxIterations : DEFAULT_MAX_ITERATIONS,
     maxOutputTokens : DEFAULT_MAX_OUTPUT_TOKENS,
     temperature : DEFAULT_TEMPERATURE,

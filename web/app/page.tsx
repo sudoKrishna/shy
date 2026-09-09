@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 
 type ToolMeta = { name: string; description: string };
-type Meta = { model: string; maxIterations: number; systemPrompt: string; tools: ToolMeta[] };
+type Meta = {
+  model: string;
+  maxIterations: number;
+  systemPrompt: string;
+  tools: ToolMeta[];
+  hasServerKey: boolean;
+};
+
+const API_KEY_STORAGE_KEY = "shy_deepseek_api_key";
 
 type Block =
   | { kind: "user"; text: string }
@@ -30,6 +38,9 @@ export default function Home() {
   const [stats, setStats] = useState({ iterations: 0, toolCalls: 0, tokensIn: 0, tokensOut: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [openTool, setOpenTool] = useState<number | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
 
   useEffect(() => {
     fetch("/api/meta")
@@ -37,6 +48,24 @@ export default function Home() {
       .then(setMeta)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setApiKey(localStorage.getItem(API_KEY_STORAGE_KEY));
+    setApiKeyLoaded(true);
+  }, []);
+
+  function saveApiKey() {
+    const trimmed = keyInput.trim();
+    if (!trimmed) return;
+    localStorage.setItem(API_KEY_STORAGE_KEY, trimmed);
+    setApiKey(trimmed);
+    setKeyInput("");
+  }
+
+  function clearApiKey() {
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+    setApiKey(null);
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -55,7 +84,7 @@ export default function Home() {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: trimmed }),
+        body: JSON.stringify({ task: trimmed, apiKey }),
       });
 
       if (!res.ok || !res.body) {
@@ -150,6 +179,58 @@ export default function Home() {
     }
   }
 
+  const ready = apiKeyLoaded && meta !== null;
+
+  if (!ready) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0b0d12] font-mono text-sm text-[#5b606e]">
+        loading…
+      </div>
+    );
+  }
+
+  const needsKey = !apiKey && !meta.hasServerKey;
+
+  if (needsKey) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0b0d12] px-4 font-mono text-[#e6e8ee]">
+        <div className="w-full max-w-md rounded-lg border border-[#242832] bg-[#12151c] p-6">
+          <h1 className="mb-1 text-sm font-semibold">
+            <span className="text-[#7dd3fc]">shy</span>
+            <span className="text-[#5b606e]"> — agent harness</span>
+          </h1>
+          <p className="mb-4 text-xs text-[#8a90a0]">
+            Enter your DeepSeek API key to get started. It's stored only in this
+            browser (localStorage) and sent directly with each run — never saved
+            on the server.
+          </p>
+          <input
+            type="password"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && saveApiKey()}
+            placeholder="sk-..."
+            autoFocus
+            className="mb-3 w-full rounded border border-[#242832] bg-[#0b0d12] px-3 py-2 text-sm text-[#e6e8ee] outline-none placeholder:text-[#3f4552] focus:border-[#7dd3fc]"
+          />
+          <button
+            onClick={saveApiKey}
+            disabled={!keyInput.trim()}
+            className="w-full rounded bg-[#7dd3fc] px-3 py-2 text-xs font-semibold text-[#06202b] disabled:bg-[#242832] disabled:text-[#5b606e]"
+          >
+            continue
+          </button>
+          <p className="mt-3 text-[11px] text-[#5b606e]">
+            Get a key at{" "}
+            <a href="https://platform.deepseek.com" target="_blank" rel="noreferrer" className="text-[#7dd3fc] hover:underline">
+              platform.deepseek.com
+            </a>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col bg-[#0b0d12] font-mono text-[#e6e8ee]">
       <header className="flex items-center justify-between border-b border-[#242832] px-5 py-3">
@@ -164,12 +245,22 @@ export default function Home() {
             </span>
           )}
         </div>
-        <button
-          onClick={() => setShowMeta((v) => !v)}
-          className="rounded border border-[#242832] px-2 py-1 text-xs text-[#8a90a0] hover:border-[#7dd3fc] hover:text-[#7dd3fc]"
-        >
-          {showMeta ? "hide" : "show"} system prompt & tools
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowMeta((v) => !v)}
+            className="rounded border border-[#242832] px-2 py-1 text-xs text-[#8a90a0] hover:border-[#7dd3fc] hover:text-[#7dd3fc]"
+          >
+            {showMeta ? "hide" : "show"} system prompt & tools
+          </button>
+          {apiKey && (
+            <button
+              onClick={clearApiKey}
+              className="rounded border border-[#242832] px-2 py-1 text-xs text-[#8a90a0] hover:border-[#f87171] hover:text-[#f87171]"
+            >
+              change key
+            </button>
+          )}
+        </div>
       </header>
 
       {showMeta && meta && (

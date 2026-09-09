@@ -59,4 +59,6 @@ export interface AgentConfig {
     temperature : number;
     maxContextTokens : number;
     compactionThreshold : number;
+    apiKey? : string;
+    baseURL? : string;
 }

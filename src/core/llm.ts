@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { DEFAULT_BASE_URL, getApiKey } from "./config.ts";
+import { DEFAULT_BASE_URL } from "./config.ts";
 import type {
   AgentConfig,
   Message,
@@ -8,10 +8,25 @@ import type {
   ToolDefinition,
 } from "./types.ts";
 
-const client = new OpenAI({
-  apiKey: getApiKey(),
-  baseURL: DEFAULT_BASE_URL,
-});
+const clients = new Map<string, OpenAI>();
+
+function getClient(config: AgentConfig): OpenAI {
+  if (!config.apiKey) {
+    throw new Error(
+      "No DeepSeek API key configured. Set DEEPSEEK_API_KEY, or pass apiKey in AgentConfig."
+    );
+  }
+
+  const baseURL = config.baseURL ?? DEFAULT_BASE_URL;
+  const cacheKey = `${config.apiKey}::${baseURL}`;
+
+  let client = clients.get(cacheKey);
+  if (!client) {
+    client = new OpenAI({ apiKey: config.apiKey, baseURL });
+    clients.set(cacheKey, client);
+  }
+  return client;
+}
 
 function toApiMessages(messages: Message[]): OpenAI.Chat.ChatCompletionMessageParam[] {
   return messages.map((m) => {
@@ -87,6 +102,7 @@ export async function callModel(
   messages: Message[],
   config: AgentConfig
 ): Promise<ModelResponse> {
+  const client = getClient(config);
   let lastErr: unknown;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {

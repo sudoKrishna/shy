@@ -9,5 +9,6 @@ export async function GET() {
       name: t.name,
       description: t.description,
     })),
+    hasServerKey: Boolean(agentConfig.apiKey),
   });
 }
