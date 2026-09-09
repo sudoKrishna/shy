@@ -1,6 +1,9 @@
 import { agentConfig, buildRunConfig, runLoop, traceEmitter, type TraceEvent } from "../../../lib/agent";
 import { checkRateLimit } from "../../../lib/rate-limit";
 
+
+export const maxDuration = 60;
+
 function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
