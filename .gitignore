@@ -45,3 +45,5 @@ evals/results/
 .swebench-venv/
 swebench/workdirs/
 swebench/predictions.jsonl
+.vercel
+.env*
