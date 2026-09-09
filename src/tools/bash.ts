@@ -63,11 +63,11 @@ export const bashTool: ToolDefinition = {
             proc.stdout.on("data", (chunk) => (stdout += chunk));
             proc.stderr.on("data", (chunk) => (stderr += chunk));
 
-            proc.on("error", (err) => {
+            proc.on("error", (err : any) => {
                 resolve(`failed to run command: ${err.message}`);
             });
 
-            proc.on("close", (exitCode) => {
+            proc.on("close", (exitCode : any) => {
                 if (exitCode === 124) {
                     resolve(`command timed out after ${timeoutSeconds}s\nstdout:\n${truncate(stdout)}\nstderr:\n${truncate(stderr)}`);
                     return;
