@@ -13,6 +13,8 @@ interface TaskResult {
     stopReason: string;
     durationMs: number;
     error?: string;
+    inputTokens: number;
+    outputTokens: number;
 }
 
 const FIXTURE_FILES = new Set(["prompt.md", "setup.sh", "check.sh"]);
@@ -66,9 +68,13 @@ for(const task of taksFolder) {
     process.chdir(taksPath);
     let stopReason = "error";
     let errorMessage: string | undefined;
+    let inputTokens = 0;
+    let outputTokens = 0;
     try {
         const result = await runLoop(prompt, config);
         stopReason = result.stopReason;
+        inputTokens = result.usage.inputTokens;
+        outputTokens = result.usage.outputTokens;
     } catch (err) {
         errorMessage = err instanceof Error ? err.message : String(err);
     } finally {
@@ -90,13 +96,17 @@ for(const task of taksFolder) {
     }
 
     const durationMs = Date.now() - startedAt;
-    results.push({ task, passed, stopReason, durationMs, error: errorMessage });
+    results.push({ task, passed, stopReason, durationMs, error: errorMessage, inputTokens, outputTokens });
 
-    console.log(`[${passed ? "PASS" : "FAIL"}] ${task} (${stopReason}, ${durationMs}ms)`);
+    console.log(`[${passed ? "PASS" : "FAIL"}] ${task} (${stopReason}, ${durationMs}ms, ${inputTokens}+${outputTokens} tokens)`);
 }
 
 const passedCount = results.filter((r) => r.passed).length;
 console.log(`\n${passedCount}/${results.length} passed`);
+
+const totalInputTokens = results.reduce((sum, r) => sum + r.inputTokens, 0);
+const totalOutputTokens = results.reduce((sum, r) => sum + r.outputTokens, 0);
+console.log(`total tokens: ${totalInputTokens} in / ${totalOutputTokens} out`);
 
 const failed = results.filter((r) => !r.passed);
 if (failed.length) {

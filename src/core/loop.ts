@@ -11,6 +11,8 @@ export async function runLoop(userInput : string , config : AgentConfig) {
 
  await logEvent("loop_start", 0 , {userInput})
  let iteration = 0;
+ let totalInputTokens = 0;
+ let totalOutputTokens = 0;
  while (iteration < config.maxIterations) {
     if (shouldCompact(message, config)) {
         const { messages: compacted, beforeCount, afterCount } = await compactMessages(message, config);
@@ -19,7 +21,9 @@ export async function runLoop(userInput : string , config : AgentConfig) {
     }
 
     let response = await callModel(message , config);
-     
+    totalInputTokens += response.usage.inputTokens;
+    totalOutputTokens += response.usage.outputTokens;
+
     await logEvent("model_calls", iteration , {
         stopReason : response.stopReason,
         content  : response.content,
@@ -41,7 +45,8 @@ export async function runLoop(userInput : string , config : AgentConfig) {
             finalContent : response.content ?? "",
             message ,
             iteration : iteration + 1,
-            stopReason : response.stopReason
+            stopReason : response.stopReason,
+            usage : { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
         }
     }
 
@@ -110,8 +115,8 @@ export async function runLoop(userInput : string , config : AgentConfig) {
     finalContent : "",
     message,
     iterations : iteration,
-    stopReason :  "max-iteration"
-
+    stopReason :  "max-iteration",
+    usage : { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
  }
    
 }
