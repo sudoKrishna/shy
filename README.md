@@ -33,7 +33,7 @@ rule to the system prompt cut those wrong fixes back to 2 — same resolved
 count, but the agent is now less likely to confidently ship something broken,
 even though that shows up as a couple more give-ups instead of bad attempts.
 
-![Project screenshot](image/bench.png)
+![Project screenshot](image/bench1.png)
 
 Full reports: `swebench/shy-deepseek.shy-verify-rerun.json` (current),
 `swebench/shy-deepseek.shy-glob-rerun.json`, `shy-deepseek.shy-rerun-18.json`,
