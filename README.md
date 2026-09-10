@@ -13,28 +13,26 @@ API (currently wired to DeepSeek).
 **Private eval suite:** 8/8 tasks passing (file creation, editing, bash,
 multi-file grep/reasoning, bug-fixing, ambiguous instructions).
 
-**SWE-bench Lite** (18 real GitHub issues, official Docker-based evaluation):
+**SWE-bench Lite** (same 18 real GitHub issues, official Docker-based evaluation,
+re-run after each round of harness changes — no task-specific tuning):
 
-- **10/18 resolved (56%)**, up from 8/18 (44%) on the same instances before
-  context compaction, parallel tool calls, retry/backoff, and Node-based
-  (portable) tools were added — no task-specific tuning, just harness
-  improvements.
-- **10/12 (83%) resolved whenever the agent produced a patch at all** — the
-  agent now attempts a fix on 12/18 instead of 9/18; most remaining misses are
-  the agent running out of iterations on large repos (Django, matplotlib)
-  before finding the right file.
-
-| Outcome | Count | Share |
+| Iteration | Resolved | Empty patches (gave up) |
 |---|---|---|
-| Resolved | 10 | 56% |
-| No fix attempted (empty patch) | 6 | 33% |
-| Unresolved (wrong fix) | 2 | 11% |
+| Baseline | 8/18 · 44% | 9 |
+| + context compaction, parallel tool calls, retry/backoff | 10/18 · 56% | 6 |
+| + `glob`, `web_fetch` tools | **12/18 · 67%** | **2** |
+
+The `glob` tool made the biggest single difference: it cut give-ups on large
+repos (Django, matplotlib) from 6/18 to 2/18 by giving the agent a proper way
+to find files by pattern instead of guessing paths or scanning with `grep`.
+**12/16 (75%) resolved whenever the agent produced a patch at all** — up from
+16/18 attempt rate (was 12/18 before).
 
 ![Project screenshot](image/bench.png)
 
-Full reports: `swebench/shy-deepseek.shy-rerun-18.json` (current run), earlier
-baseline in `swebench/shy-deepseek.shy-bigrun-15.json` +
-`shy-deepseek.shy-smoke-test-v2.json`.
+Full reports: `swebench/shy-deepseek.shy-glob-rerun.json` (current),
+`swebench/shy-deepseek.shy-rerun-18.json`, earlier baseline in
+`swebench/shy-deepseek.shy-bigrun-15.json` + `shy-deepseek.shy-smoke-test-v2.json`.
 
 ## Architecture
 
@@ -57,11 +55,14 @@ task ──> system prompt + tools ──> LLM call ──> tool calls?
   crosses a token threshold, older messages get summarized into one message by
   an extra LLM call, keeping the last few turns intact — otherwise a long task
   would eventually blow past the model's context window.
-- **`src/tools/`** — `bash`, `read`, `write`, `edit`, `grep`. Each is a plain
-  `{ name, description, parameters, execute }` object; the loop doesn't know or
-  care what a tool does internally. Built on Node's `child_process`/`fs`
-  (not Bun-only APIs) so the same harness runs unmodified under the Bun CLI
-  and inside Next.js API routes.
+- **`src/tools/`** — `bash`, `read`, `write`, `edit`, `grep`, `glob`, `web_fetch`.
+  Each is a plain `{ name, description, parameters, execute }` object; the loop
+  doesn't know or care what a tool does internally. Built on Node's
+  `child_process`/`fs` (not Bun-only APIs) so the same harness runs unmodified
+  under the Bun CLI and inside Next.js API routes. `bash` blocks destructive
+  command patterns before running them; `web_fetch` refuses local/internal
+  addresses (SSRF guardrail) and its results are flagged to the model as
+  untrusted content in the system prompt.
 - **`src/tools/spawn_subagent.ts`** — delegates an independent sub-task to a
   fresh agent with its own clean context and system prompt, returning only a
   short summary to the parent (not the sub-agent's full conversation). Built
