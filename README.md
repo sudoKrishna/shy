@@ -10,29 +10,35 @@ API (currently wired to DeepSeek).
 
 ## Results
 
-**Private eval suite:** 8/8 tasks passing (file creation, editing, bash,
-multi-file grep/reasoning, bug-fixing, ambiguous instructions).
+**Private eval suite:** 11/11 tasks passing (file creation, editing, bash,
+multi-file grep/reasoning, bug-fixing, ambiguous/misleading instructions,
+multi-file rename, verify-before-done).
 
 **SWE-bench Lite** (same 18 real GitHub issues, official Docker-based evaluation,
 re-run after each round of harness changes — no task-specific tuning):
 
-| Iteration | Resolved | Empty patches (gave up) |
-|---|---|---|
-| Baseline | 8/18 · 44% | 9 |
-| + context compaction, parallel tool calls, retry/backoff | 10/18 · 56% | 6 |
-| + `glob`, `web_fetch` tools | **12/18 · 67%** | **2** |
+| Iteration | Resolved | Wrong fix | Gave up (empty patch) |
+|---|---|---|---|
+| Baseline | 8/18 · 44% | 0 | 9 |
+| + context compaction, parallel tool calls, retry/backoff | 10/18 · 56% | 2 | 6 |
+| + `glob`, `web_fetch` tools | 12/18 · 67% | 4 | 2 |
+| + "verify before done" rule | **12/18 · 67%** | **2** | 4 |
 
-The `glob` tool made the biggest single difference: it cut give-ups on large
-repos (Django, matplotlib) from 6/18 to 2/18 by giving the agent a proper way
-to find files by pattern instead of guessing paths or scanning with `grep`.
-**12/16 (75%) resolved whenever the agent produced a patch at all** — up from
-16/18 attempt rate (was 12/18 before).
+Two different improvements, two different effects: `glob` mostly fixed
+*give-ups* — the agent could finally find the right file in large repos
+(Django, matplotlib) instead of guessing paths, so it attempted far more
+fixes (16/18 vs 12/18 before). That also meant more *wrong* fixes (4).
+Adding an explicit "run the test and read the output before declaring done"
+rule to the system prompt cut those wrong fixes back to 2 — same resolved
+count, but the agent is now less likely to confidently ship something broken,
+even though that shows up as a couple more give-ups instead of bad attempts.
 
 ![Project screenshot](image/bench.png)
 
-Full reports: `swebench/shy-deepseek.shy-glob-rerun.json` (current),
-`swebench/shy-deepseek.shy-rerun-18.json`, earlier baseline in
-`swebench/shy-deepseek.shy-bigrun-15.json` + `shy-deepseek.shy-smoke-test-v2.json`.
+Full reports: `swebench/shy-deepseek.shy-verify-rerun.json` (current),
+`swebench/shy-deepseek.shy-glob-rerun.json`, `shy-deepseek.shy-rerun-18.json`,
+earlier baseline in `swebench/shy-deepseek.shy-bigrun-15.json` +
+`shy-deepseek.shy-smoke-test-v2.json`.
 
 ## Architecture
 
