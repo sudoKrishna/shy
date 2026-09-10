@@ -220,6 +220,12 @@ const pipelineStages = [
   },
   {
     n: "#05",
+    file: "prompts/system.ts",
+    title: "Verify",
+    body: "Before declaring a fix done, the model is told to actually run it and read the output — not assume it's correct because the diff looks right.",
+  },
+  {
+    n: "#06",
     file: "core/loop.ts",
     title: "Repeat",
     body: "Results feed back in, and the loop continues until the model stops, or a hard iteration ceiling is hit.",
@@ -232,27 +238,32 @@ const tools = [
   { name: "write", detail: "Creates a file or fully overwrites one — never used on files with content worth keeping." },
   { name: "edit", detail: "Replaces one exact string match inside a file. Refuses ambiguous matches instead of guessing." },
   { name: "grep", detail: "Searches text across files with line numbers, instead of the model hand-rolling a search command." },
+  { name: "glob", detail: "Finds files by pattern (**/*.py) across the whole tree — no manual recursion, node_modules/.git skipped automatically." },
+  { name: "web_fetch", detail: "Fetches a URL and returns its text. Refuses local/internal addresses; its output is flagged as untrusted to the model." },
   { name: "spawn_subagent", detail: "Delegates a sub-task to a fresh agent with clean context. Capped at 5 spawns per run." },
 ];
 
 const guardrails = [
   { bad: "Destructive commands execute silently", good: "rm -rf /, fork bombs, curl | sh — blocked before they run" },
   { bad: "Sub-agents can spawn without limit", good: "Capped at 5 spawns per run, one level of nesting only" },
+  { bad: "web_fetch can reach internal services", good: "localhost, cloud metadata, private IPs — all blocked (SSRF)" },
+  { bad: "A fetched page could inject fake instructions", good: "Fetched content is explicitly flagged untrusted — never followed as a command" },
   { bad: "One shared API client for every user", good: "Per-request key isolation — your key never touches another session" },
   { bad: "No abuse protection on the public demo", good: "5 requests / minute, per IP" },
 ];
 
 const benchStats = [
-  { value: "10/18", label: "SWE-bench Lite resolved" },
-  { value: "56%", label: "Resolve rate, official harness" },
-  { value: "83%", label: "Resolved when a patch was attempted" },
-  { value: "8/8", label: "Private eval suite passing" },
+  { value: "12/18", label: "SWE-bench Lite resolved" },
+  { value: "67%", label: "Resolve rate, official harness" },
+  { value: "2", label: "Wrong fixes — down from 4" },
+  { value: "11/11", label: "Private eval suite passing" },
 ];
 
 const benchRows = [
-  { metric: "Resolved", before: "8/18 · 44%", after: "10/18 · 56%" },
-  { metric: "Patch attempt rate", before: "9/18 · 50%", after: "12/18 · 67%" },
-  { metric: "Resolved when attempted", before: "89%", after: "83%" },
+  { metric: "Baseline", resolved: "8/18 · 44%", note: "first working agent loop" },
+  { metric: "+ compaction, parallel calls, retry", resolved: "10/18 · 56%", note: "context & reliability" },
+  { metric: "+ glob, web_fetch", resolved: "12/18 · 67%", note: "codebase navigation" },
+  { metric: "+ verify-before-done", resolved: "12/18 · 67%", note: "wrong fixes 4 → 2" },
 ];
 
 export default function Home() {
@@ -352,10 +363,10 @@ export default function Home() {
                 transition={{ duration: 0.7, delay: 0.25, ease: EASE }}
                 className="mt-7 max-w-lg text-[15px] leading-relaxed text-white/85"
               >
-                shy turns a task into tool calls — bash, read, write, edit, grep — runs
-                them in parallel, compacts its own context when it gets long, and
-                repeats until the job is done. Built from scratch to understand how
-                coding agents actually work, not just to use one.
+                shy turns a task into tool calls — bash, read, write, edit, grep, glob,
+                web_fetch — runs them in parallel, compacts its own context when it gets
+                long, and verifies its own fix before calling it done. Built from scratch
+                to understand how coding agents actually work, not just to use one.
               </motion.p>
 
               <motion.div
@@ -387,9 +398,9 @@ export default function Home() {
                 transition={{ duration: 0.7, delay: 0.5 }}
                 className="mt-12 flex flex-wrap gap-x-8 gap-y-3 border-t border-white/20 pt-6 font-mono text-[11px] uppercase tracking-[0.14em] text-white/70"
               >
-                <span>10/18 SWE-bench Lite</span>
-                <span>8/8 evals passing</span>
-                <span>6 tools</span>
+                <span>12/18 SWE-bench Lite · 67%</span>
+                <span>11/11 evals passing</span>
+                <span>8 tools</span>
                 <span>0 vendor lock-in</span>
               </motion.div>
             </div>
@@ -474,7 +485,7 @@ export default function Home() {
           <Reveal>
             <Eyebrow dark>#A The agent loop</Eyebrow>
             <h2 style={{ fontFamily: "var(--font-serif)" }} className="mt-3 text-4xl sm:text-5xl">
-              Five stages, repeating
+              Six stages, repeating
             </h2>
             <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-[#5c4632]">
               Deterministic where it can be — parallel execution, retry, compaction —
@@ -502,11 +513,12 @@ export default function Home() {
           <Reveal>
             <Eyebrow>#B The toolset</Eyebrow>
             <h2 style={{ fontFamily: "var(--font-serif)" }} className="mt-3 text-4xl sm:text-5xl">
-              Six tools your agent gets
+              Eight tools your agent gets
             </h2>
             <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-white/80">
               Each one is a plain object — name, description, JSON-schema parameters,
-              an execute function. The loop doesn't know or care what's inside.
+              an execute function. The loop doesn't know or care what's inside. Grown
+              from five to eight as real tasks exposed what was missing.
             </p>
           </Reveal>
 
@@ -594,26 +606,27 @@ export default function Home() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-white/20 font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">
-                  <th className="px-5 py-3 font-normal">Metric</th>
-                  <th className="px-5 py-3 font-normal">Before</th>
-                  <th className="px-5 py-3 font-normal">After</th>
+                  <th className="px-5 py-3 font-normal">Iteration</th>
+                  <th className="px-5 py-3 font-normal">Resolved</th>
+                  <th className="px-5 py-3 font-normal">What changed</th>
                 </tr>
               </thead>
               <tbody className="font-mono text-[13px]">
                 {benchRows.map((r) => (
                   <tr key={r.metric} className="border-b border-white/10 last:border-0">
                     <td className="px-5 py-3.5 text-white/80">{r.metric}</td>
-                    <td className="px-5 py-3.5 text-white/60">{r.before}</td>
-                    <td className="px-5 py-3.5 font-semibold text-white">{r.after}</td>
+                    <td className="px-5 py-3.5 font-semibold text-white">{r.resolved}</td>
+                    <td className="px-5 py-3.5 text-white/60">{r.note}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </Reveal>
           <p className="mt-4 font-mono text-[11px] leading-relaxed text-white/50">
-            Same 18 instances, before vs after context compaction, parallel tool
-            calls, retry/backoff, and portable Node-based tools — no task-specific
-            tuning.
+            Same 18 instances, re-run after each round of harness changes — no
+            task-specific tuning. <b>glob</b> mostly fixed give-ups (agent could
+            finally find the right file in big repos); <b>verify-before-done</b>{" "}
+            then cut wrong fixes from 4 to 2 without changing the resolved count.
           </p>
         </div>
       </section>
