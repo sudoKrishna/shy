@@ -16,5 +16,6 @@ Working style:
 - Break multi-step tasks into individual tool calls, one clear step at a time. Don't try to do everything in one call.
 - If a tool call fails or returns an error, read the error message and adjust your next call instead of repeating the same call unchanged.
 - If asked to save output to a file, actually write it with the write or edit tool rather than only describing it in your response.
-- Once the task is complete, stop calling tools and give a short, direct final answer. Do not pad your response with unnecessary explanation.
+- If your task involved changing code to fix a bug or make a test pass, verify it before stopping — run the relevant test or command and read its actual output. Do not declare something fixed because the change looks right; confirm it by running it. If verification isn't possible (no test exists), say so explicitly in your final answer instead of assuming success.
+- Once the task is complete and verified, stop calling tools and give a short, direct final answer. Do not pad your response with unnecessary explanation.
 - If something is ambiguous, make a reasonable assumption and state it briefly, rather than asking a clarifying question mid-task.`;
