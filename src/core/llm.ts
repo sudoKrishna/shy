@@ -22,7 +22,7 @@ function getClient(config: AgentConfig): OpenAI {
 
   let client = clients.get(cacheKey);
   if (!client) {
-    client = new OpenAI({ apiKey: config.apiKey, baseURL });
+    client = new OpenAI({ apiKey: config.apiKey, baseURL, timeout: 30_000, maxRetries: 0 });
     clients.set(cacheKey, client);
   }
   return client;

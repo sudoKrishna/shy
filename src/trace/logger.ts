@@ -1,9 +1,10 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { TraceEvent } from "../core/types";
 import { traceEmitter } from "./emitter";
 
-const projectRoot = process.cwd();
+const projectRoot = process.env.VERCEL ? tmpdir() : process.cwd();
 const logDir = join(projectRoot, "logs");
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const logFilePath = join(logDir, `run-${runId}.jsonl`);
