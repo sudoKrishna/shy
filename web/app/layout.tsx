@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     "An agent loop, tool-use, context compaction, guardrails, and a live demo — built to understand how coding agents actually work.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
