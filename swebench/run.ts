@@ -21,9 +21,10 @@ const predictionsPath = join(projectRoot, "swebench/predictions.jsonl");
 const instances: Instance[] = JSON.parse(readFileSync(dataPath, "utf-8"));
 mkdirSync(workRoot, { recursive: true });
 
-// deliberately no spawn_subagent here, to keep results comparable with the
-// earlier baseline runs (adding it would change what's being measured)
-const config = buildConfig({ systemPrompt, tools: baseTools });
+const LARGE_REPO_FILE_THRESHOLD = 3000;
+const DEFAULT_MAX_ITERATIONS = 25;
+const LARGE_REPO_MAX_ITERATIONS = 35;
+
 const predictions: string[] = [];
 
 for (const inst of instances) {
@@ -37,6 +38,14 @@ for (const inst of instances) {
 
   execSync(`git checkout -f ${inst.base_commit}`, { cwd: repoDir, stdio: "inherit" });
   execSync(`git clean -fd`, { cwd: repoDir, stdio: "inherit" });
+
+  const fileCount = Number(
+    execSync(`find . -type f -not -path './.git/*' | wc -l`, { cwd: repoDir }).toString().trim()
+  );
+  const maxIterations = fileCount > LARGE_REPO_FILE_THRESHOLD ? LARGE_REPO_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS;
+  console.log(`repo size: ${fileCount} files -> maxIterations: ${maxIterations}`);
+
+  const config = buildConfig({ systemPrompt, tools: baseTools, maxIterations });
 
   const task =
     `You are working inside the repository "${inst.repo}", already checked out at the commit that has this bug. ` +
