@@ -204,7 +204,7 @@ const pipelineStages = [
     n: "#02",
     file: "core/llm.ts",
     title: "Decide",
-    body: "The model either answers directly, or returns one or more tool calls — retried with backoff on transient errors.",
+    body: "The model either answers directly, or returns one or more tool calls — retried with backoff on transient errors. Jev sanity-checks the proposed calls before they run.",
   },
   {
     n: "#03",
@@ -216,13 +216,13 @@ const pipelineStages = [
     n: "#04",
     file: "core/context.ts",
     title: "Compact",
-    body: "Once the conversation crosses ~70% of the token budget, older turns get summarized into one message by an extra model call.",
+    body: "In the 65–95% token-budget range, Jev looks at what actually happened recently and decides adaptively whether to compact — not just a fixed threshold.",
   },
   {
     n: "#05",
-    file: "prompts/system.ts",
+    file: "core/loop.ts",
     title: "Verify",
-    body: "Before declaring a fix done, the model is told to actually run it and read the output — not assume it's correct because the diff looks right.",
+    body: "When the model says \"stop\", Jev checks the last output and recent tool results before agreeing — a hard programmatic gate, not a prompt asking nicely.",
   },
   {
     n: "#06",
@@ -264,6 +264,41 @@ const benchRows = [
   { metric: "+ compaction, parallel calls, retry", resolved: "10/18 · 56%", note: "context & reliability" },
   { metric: "+ glob, web_fetch", resolved: "12/18 · 67%", note: "codebase navigation" },
   { metric: "+ verify-before-done", resolved: "12/18 · 67%", note: "wrong fixes 4 → 2" },
+  { metric: "+ Jev decision layer", resolved: "12/18 · 67%", note: "score holds, cost drops" },
+];
+
+const jevStats = [
+  { value: "83%", label: "Fewer tokens per eval task" },
+  { value: "5×", label: "Faster per task" },
+  { value: "11/11", label: "Still passing" },
+  { value: "3.41/4", label: "Avg quality score" },
+];
+
+const jevPoints = [
+  {
+    n: "01",
+    title: "Stop/continue gate",
+    file: "core/loop.ts",
+    body: "When DeepSeek says stop, Jev checks recent tool outputs before agreeing. Replaced a soft \"verify before done\" prompt rule with a hard check — and stopped a 15×-repeat runaway-loop failure mode outright.",
+  },
+  {
+    n: "02",
+    title: "Tool routing check",
+    file: "core/loop.ts",
+    body: "Before tool calls execute, Jev flags ones that look wrong for the task. Non-blocking today — logged as jev_tool_warning for visibility, not yet a hard stop.",
+  },
+  {
+    n: "03",
+    title: "Adaptive compaction",
+    file: "core/context.ts",
+    body: "Between 65–95% of the token budget, Jev decides whether to compact from what's actually in recent messages, instead of one fixed percentage for every task.",
+  },
+  {
+    n: "04",
+    title: "Eval judge",
+    file: "evals/jev-judge.ts",
+    body: "Scores every eval solution independently of check.sh — quality (0–4), regression risk, and one of 8 failure reasons. Caught two \"passing\" tasks that were actually weak solutions.",
+  },
 ];
 
 export default function Home() {
@@ -294,6 +329,7 @@ export default function Home() {
               ["#loop", "Loop"],
               ["#tools", "Tools"],
               ["#guardrails", "Guardrails"],
+              ["#jev", "Jev"],
               ["#benchmark", "Benchmark"],
             ].map(([href, label]) => (
               <a key={href} href={href} className="group relative py-1 hover:text-white">
@@ -574,6 +610,58 @@ export default function Home() {
         </div>
       </section>
 
+      {/* JEV */}
+      <section id="jev" className="bg-[#fff7f0] py-24 text-[#221208]">
+        <div className="mx-auto max-w-6xl px-6">
+          <Reveal>
+            <Eyebrow dark>#D The decision layer</Eyebrow>
+            <h2 style={{ fontFamily: "var(--font-serif)" }} className="mt-3 text-4xl sm:text-5xl">
+              A model that never generates text
+            </h2>
+            <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-[#5c4632]">
+              Jev (from TypeSafe AI) is a "System One" model — it takes state and
+              typed questions, and returns structured decisions with calibrated
+              probabilities in 70–500ms, no hallucination possible. Used for the
+              four places this loop had to make a judgment call, not write code.
+            </p>
+          </Reveal>
+
+          <StaggerGrid className="mt-12 grid gap-px overflow-hidden border border-[#e7cfb8] bg-[#e7cfb8] sm:grid-cols-2 lg:grid-cols-4">
+            {jevStats.map((s) => (
+              <GridItem key={s.label} className="bg-[#fff7f0] p-7">
+                <div style={{ fontFamily: "var(--font-serif)" }} className="text-4xl">
+                  {s.value}
+                </div>
+                <div className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[#b8815e]">
+                  {s.label}
+                </div>
+              </GridItem>
+            ))}
+          </StaggerGrid>
+
+          <StaggerGrid className="mt-px grid gap-px overflow-hidden border border-t-0 border-[#e7cfb8] bg-[#e7cfb8] sm:grid-cols-2">
+            {jevPoints.map((p) => (
+              <GridItem key={p.n} className="bg-[#fff7f0] p-7">
+                <div className="flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.14em] text-[#b8815e]">
+                  <span>#{p.n} {p.title}</span>
+                </div>
+                <div className="mt-1 font-mono text-[10px] text-[#b8815e]/70">{p.file}</div>
+                <p className="mt-4 text-[13.5px] leading-relaxed text-[#4a3624]">{p.body}</p>
+              </GridItem>
+            ))}
+          </StaggerGrid>
+
+          <Reveal delay={0.1} className="mt-8 border-l-2 border-[#ff4d1c] pl-5">
+            <p className="font-mono text-[12px] leading-relaxed text-[#5c4632]">
+              <b className="text-[#221208]">007-fix-bug, before:</b> stop=max-iteration
+              · 40s · 67,974 tokens (model kept repeating its final message until the
+              iteration ceiling hit). <b className="text-[#221208]">After:</b> stop=stop
+              · 9s · 10,214 tokens.
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
       {/* BENCHMARK */}
       <section id="benchmark" className="bg-[#ff4d1c] py-24 text-white">
         <div className="mx-auto max-w-6xl px-6">
@@ -626,7 +714,10 @@ export default function Home() {
             Same 18 instances, re-run after each round of harness changes — no
             task-specific tuning. <b>glob</b> mostly fixed give-ups (agent could
             finally find the right file in big repos); <b>verify-before-done</b>{" "}
-            then cut wrong fixes from 4 to 2 without changing the resolved count.
+            then cut wrong fixes from 4 to 2. <b>Jev</b> holds that same score
+            while cutting cost — the remaining 6 failures are large-repo
+            navigation problems (6000+ file Django/matplotlib repos), not a
+            stopping or verification issue anymore.
           </p>
         </div>
       </section>
