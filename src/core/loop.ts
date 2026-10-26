@@ -1,6 +1,7 @@
 import { logEvent } from "../trace/logger";
 import { callModel } from "./llm";
 import { shouldCompact, compactMessages } from "./context";
+import { askJev, getNoulProbability } from "./jev";
 import type { AgentConfig, Message, ToolCall, ToolDefinition, ToolResult } from "./types";
 
 const MAX_PARALLEL_TOOLS = 4;
@@ -131,6 +132,50 @@ export async function runLoop(userInput: string, config: AgentConfig) {
         const usage = { inputTokens: totalInputTokens, outputTokens: totalOutputTokens };
 
         if (response.stopReason === "stop") {
+            // Jev is optional and advisory: it can request another verification pass,
+            // but never executes tools or extends the hard iteration limit.
+            if (process.env.TYPESAFE_API_KEY && iteration + 1 < config.maxIterations) {
+                try {
+                    const decision = await askJev(
+                        {
+                            task: userInput,
+                            recentMessages: message.slice(-8).map((item) => ({
+                                role: item.role,
+                                content: item.content.slice(0, 4_000),
+                                toolName: item.name,
+                            })),
+                        },
+                        {
+                            completion: {
+                                type: "noul",
+                                instructions: "Is the user's coding task demonstrably complete based on the conversation? Return a high probability only when the requested work appears complete and necessary verification evidence is present. A claim of completion alone is not verification.",
+                            },
+                        },
+                    );
+                    const probability = decision ? getNoulProbability(decision, "completion") : null;
+                    await logEvent("jev_decision", iteration, {
+                        model: decision?.model ?? null,
+                        question: "completion",
+                        completionProbability: probability,
+                        action: probability !== null && probability < 0.65 ? "request_verification" : "accept_stop",
+                        inputTokens: decision?.inputTokens ?? 0,
+                        outputTokens: decision?.outputTokens ?? 0,
+                    });
+                    if (probability !== null && probability < 0.65) {
+                        message.push({
+                            role: "user",
+                            content: "Before finishing, verify whether the task is actually complete. Inspect your changes and run relevant tests or checks when available. If anything remains incomplete, continue working; do not merely claim success.",
+                        });
+                        iteration++;
+                        continue;
+                    }
+                } catch (error) {
+                    await logEvent("jev_decision", iteration, {
+                        error: error instanceof Error ? error.message : String(error),
+                        action: "accept_stop_due_to_jev_error",
+                    });
+                }
+            }
             await logEvent("loop_end", iteration, {
                 stopReason: "stop", status: "completed", totalIterations: iteration + 1,
             });
