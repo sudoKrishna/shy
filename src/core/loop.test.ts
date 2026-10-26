@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AgentConfig, ModelResponse, ToolDefinition } from "./types";
 
 let responses: ModelResponse[] = [];
+const askJev = mock(async () => null);
+const getNoulProbability = mock(() => null as number | null);
 const callModel = mock(async () => {
     const next = responses.shift();
     if (!next) throw new Error("No mocked model response available");
@@ -10,6 +12,7 @@ const callModel = mock(async () => {
 
 mock.module("./llm", () => ({ callModel }));
 mock.module("../trace/logger", () => ({ logEvent: mock(async () => {}) }));
+mock.module("./jev", () => ({ askJev, getNoulProbability }));
 mock.module("./context", () => ({
     shouldCompact: () => false,
     compactMessages: async (messages: unknown[]) => ({
@@ -42,6 +45,8 @@ function config(tools: ToolDefinition[] = []): AgentConfig {
 beforeEach(() => {
     responses = [];
     callModel.mockClear();
+    askJev.mockClear();
+    getNoulProbability.mockClear();
 });
 
 describe("runLoop completion status", () => {
