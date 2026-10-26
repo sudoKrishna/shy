@@ -141,12 +141,12 @@ No hallucination possible: it either picks a choice, assigns a score, or returns
 a yes/no probability. Responses arrive in 70–500ms. Input costs $0.042/MTok;
 output is free.
 
-This makes it the right tool for the decision layer of an agent loop — not for
-generating code or reasoning about a codebase, but for answering "is this task
+In earlier experiments, Jev was evaluated for decisions such as "is this task
 done?", "do these tool calls make sense?", "should we compact context now?",
-"why did this eval fail?". Each of those was previously either a string parsed
-from the main LLM (slow, expensive, hallucination-prone) or a hardcoded
-threshold (brittle). Jev handles them in ~100ms at near-zero cost.
+and "why did this eval fail?". However, those decisions are not called by the
+current `src/core/loop.ts` and `src/core/context.ts` inspected for this branch.
+Treat Jev as a previous experiment, not an active runtime dependency, until the
+integration and its tests are restored.
 
 ### Jev and prior experiments
 
