@@ -153,11 +153,11 @@ adaptive compaction, and a Jev-powered eval judge remain future work.
 
 ### Jev and prior experiments
 
-Jev was explored as a separate decision layer in earlier experiments. The
-current loop and context modules inspected for this branch do not call Jev, and
-the expected `evals/jev-judge.ts` file was not present at the inspected path.
-Therefore the Jev-specific benchmark figures and behavior above are historical
-until the integration, judge, and artifacts are restored and reproducibly tested.
+Earlier Jev-specific benchmark figures remain historical and are not evidence
+that this new completion check improves task success. The `evals/jev-judge.ts`
+quality judge, tool-routing validation, and Jev-driven compaction are not part of
+this PR. Re-run benchmarks with Jev enabled and disabled before attributing any
+quality, token, or latency changes to this integration.
 
 ## Running it
 
