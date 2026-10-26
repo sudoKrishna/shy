@@ -90,11 +90,13 @@ task -> system prompt + tools -> model call -> tool calls?
 - **`src/trace/logger.ts`** — appends JSONL trace events and emits events in
   process. Traces are observability data, not durable checkpoints for resuming
   a crashed run.
-- **Jev integration** — the README previously described Jev stop decisions,
-  tool-routing validation, adaptive compaction, and an eval judge. These claims
-  are not reflected in the inspected `src/core/loop.ts` and
-  `src/core/context.ts` on this branch. Treat Jev integration as unverified /
-  not active in this code path unless it is implemented and covered by tests.
+- **Jev integration** — when `TYPESAFE_API_KEY` is configured, `src/core/jev.ts`
+  asks the TypeSafe System One endpoint whether a stop appears sufficiently
+  verified. Low completion probability can request another verification pass,
+  bounded by `maxIterations`. Jev errors fail open and are recorded in traces.
+  This is advisory, not proof of correctness; objective checks remain
+  authoritative. Tool-routing validation, adaptive compaction, and the Jev eval
+  judge are not implemented by this integration.
 - **`src/core/llm.ts`** — the only network-touching module. Wraps the OpenAI SDK
   against DeepSeek's compatible endpoint, with retry + exponential backoff on
   transient errors (429 / 5xx / connection timeouts).
@@ -141,26 +143,28 @@ No hallucination possible: it either picks a choice, assigns a score, or returns
 a yes/no probability. Responses arrive in 70–500ms. Input costs $0.042/MTok;
 output is free.
 
-In earlier experiments, Jev was evaluated for decisions such as "is this task
-done?", "do these tool calls make sense?", "should we compact context now?",
-and "why did this eval fail?". However, those decisions are not called by the
-current `src/core/loop.ts` and `src/core/context.ts` inspected for this branch.
-Treat Jev as a previous experiment, not an active runtime dependency, until the
-integration and its tests are restored.
+The current integration uses Jev only for a bounded completion/verification
+decision at the model's stop point. It is disabled when `TYPESAFE_API_KEY` is
+unset. If Jev judges completion probability below 0.65, the agent is asked to
+verify and continue, provided the iteration budget allows it. API errors fail
+open to preserve baseline behavior. Jev does not execute tools, override the
+hard iteration limit, or replace objective evaluation. Tool-routing validation,
+adaptive compaction, and a Jev-powered eval judge remain future work.
 
 ### Jev and prior experiments
 
-Jev was explored as a separate decision layer in earlier experiments. The
-current loop and context modules inspected for this branch do not call Jev, and
-the expected `evals/jev-judge.ts` file was not present at the inspected path.
-Therefore the Jev-specific benchmark figures and behavior above are historical
-until the integration, judge, and artifacts are restored and reproducibly tested.
+Earlier Jev-specific benchmark figures remain historical and are not evidence
+that this new completion check improves task success. The `evals/jev-judge.ts`
+quality judge, tool-routing validation, and Jev-driven compaction are not part of
+this PR. Re-run benchmarks with Jev enabled and disabled before attributing any
+quality, token, or latency changes to this integration.
 
 ## Running it
 
 ```bash
 bun install
 echo "DEEPSEEK_API_KEY=..." > .env
+# Optional: enables Jev completion/verification checks
 echo "TYPESAFE_API_KEY=..." >> .env
 
 bun run start "find all TODOs in src and count them"

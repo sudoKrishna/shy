@@ -47,7 +47,7 @@ export interface ModelResponse {
 
 export interface TraceEvent {
     timestamp: string;
-    type: "model_calls" | "tool_call" | "loop_start" | "loop_end" | "error" | "context_compacted";
+    type: "model_calls" | "tool_call" | "loop_start" | "loop_end" | "error" | "context_compacted" | "jev_decision";
     iteration: number;
     data: Record<string, unknown>;
 }
