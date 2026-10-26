@@ -11,6 +11,7 @@ interface TaskResult {
     task: string;
     passed: boolean;
     stopReason: string;
+    status: "completed" | "incomplete";
     durationMs: number;
     error?: string;
     inputTokens: number;
@@ -67,12 +68,14 @@ for(const task of taksFolder) {
 
     process.chdir(taksPath);
     let stopReason = "error";
+    let status: "completed" | "incomplete" = "incomplete";
     let errorMessage: string | undefined;
     let inputTokens = 0;
     let outputTokens = 0;
     try {
         const result = await runLoop(prompt, config);
         stopReason = result.stopReason;
+        status = result.status;
         inputTokens = result.usage.inputTokens;
         outputTokens = result.usage.outputTokens;
     } catch (err) {
@@ -96,9 +99,11 @@ for(const task of taksFolder) {
     }
 
     const durationMs = Date.now() - startedAt;
-    results.push({ task, passed, stopReason, durationMs, error: errorMessage, inputTokens, outputTokens });
+    results.push({ task, passed, stopReason, status, durationMs, error: errorMessage, inputTokens, outputTokens });
 
-    console.log(`[${passed ? "PASS" : "FAIL"}] ${task} (${stopReason}, ${durationMs}ms, ${inputTokens}+${outputTokens} tokens)`);
+    // "passed" means the task's objective check passed. "status" records the
+    // agent's own completion state; these are intentionally separate signals.
+    console.log(`[${passed ? "PASS" : "FAIL"}] ${task} (agent=${status}, stop=${stopReason}, ${durationMs}ms, ${inputTokens}+${outputTokens} tokens)`);
 }
 
 const passedCount = results.filter((r) => r.passed).length;
