@@ -1,122 +1,193 @@
 import { logEvent } from "../trace/logger";
 import { callModel } from "./llm";
 import { shouldCompact, compactMessages } from "./context";
-import type { AgentConfig, Message, ToolResult } from "./types";
+import type { AgentConfig, Message, ToolCall, ToolDefinition, ToolResult } from "./types";
 
-export async function runLoop(userInput : string , config : AgentConfig) {
- let message : Message[] = [
-    {role  : "system" , content : config.systemPrompt},
-    {role : "user"  , content : userInput}
- ]
+const MAX_PARALLEL_TOOLS = 4;
 
- await logEvent("loop_start", 0 , {userInput})
- let iteration = 0;
- let totalInputTokens = 0;
- let totalOutputTokens = 0;
- while (iteration < config.maxIterations) {
-    if (shouldCompact(message, config)) {
-        const { messages: compacted, beforeCount, afterCount } = await compactMessages(message, config);
-        message = compacted;
-        await logEvent("context_compacted", iteration, { beforeCount, afterCount });
+type Access = "read" | "write" | "exclusive";
+type ScheduledCall = { call: ToolCall; tool?: ToolDefinition; index: number; access: Access; resource: string };
+
+function classifyTool(call: ToolCall, tool?: ToolDefinition): Pick<ScheduledCall, "access" | "resource"> {
+    // Only explicitly recognized tools receive optimistic concurrency. Unknown tools and
+    // shell commands may have arbitrary side effects, so they run alone.
+    if (!tool) return { access: "exclusive", resource: "*" };
+
+    if (call.name === "web_fetch") return { access: "read", resource: `web:${String(call.arguments.url ?? "")}` };
+    if (call.name === "read") return { access: "read", resource: `file:${String(call.arguments.filePath ?? "")}` };
+    if (call.name === "write" || call.name === "edit") {
+        return { access: "write", resource: `file:${String(call.arguments.filePath ?? "")}` };
     }
+    // grep/glob can inspect the whole workspace, so don't run them alongside mutations.
+    if (call.name === "grep" || call.name === "glob") return { access: "read", resource: "workspace:*" };
+    return { access: "exclusive", resource: "*" };
+}
 
-    let response = await callModel(message , config);
-    totalInputTokens += response.usage.inputTokens;
-    totalOutputTokens += response.usage.outputTokens;
-
-    await logEvent("model_calls", iteration , {
-        stopReason : response.stopReason,
-        content  : response.content,
-        toolCallCount : response.toolCalls.length,
-        usage : response.usage,
-    });
-    message.push({
-        role : "assistant",
-        content : response.content ?? "",
-        toolCalls : response.toolCalls.length ? response.toolCalls : undefined
-    })
-
-    if(response.stopReason === "stop" || response.stopReason === "length") {
-        await logEvent("loop_end", iteration, {
-            stopReason : response.stopReason,
-            totalIterations : iteration + 1,
-        });
-        return {
-            finalContent : response.content ?? "",
-            message ,
-            iteration : iteration + 1,
-            stopReason : response.stopReason,
-            usage : { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
-        }
+function conflicts(a: ScheduledCall, b: ScheduledCall): boolean {
+    if (a.access === "exclusive" || b.access === "exclusive") return true;
+    if (a.resource === "workspace:*" || b.resource === "workspace:*") {
+        return a.access === "write" || b.access === "write";
     }
+    return a.resource === b.resource && (a.access === "write" || b.access === "write");
+}
 
-    if(response.stopReason === "error") {
-        throw new Error("Model returned an error stop reason")
-    }
+async function executeOne(item: ScheduledCall): Promise<{ call: ToolCall; result: ToolResult }> {
+    const { call, tool } = item;
+    const startedAt = Date.now();
+    let result: ToolResult;
 
-    const results = await Promise.all(response.toolCalls.map(async (call) => {
-        const tool = config.tools.find((t) =>  t.name === call.name);
-        const startedAt = Date.now();
-
-        let result : ToolResult;
-        if(!tool) {
+    if (!tool) {
+        result = {
+            toolCallId: call.id, name: call.name, content: `no such tool: ${call.name}`,
+            isError: true, durationMs: Date.now() - startedAt,
+        };
+    } else {
+        try {
+            const output = await tool.execute(call.arguments);
             result = {
-                toolCallId : call.id,
-                name : call.name,
-                content : `no such tool : ${call.name}`,
-                isError :true,
-                durationMs : Date.now() - startedAt
-            }
-        } else {
-            try {
-                const output = await tool.execute(call.arguments)
-                result = {
-                    toolCallId : call.id,
-                    name : call.name,
-                    content : output,
-                    isError : false,
-                    durationMs : Date.now() - startedAt
-                }
-            } catch (error) {
-                result =  {
-                    toolCallId : call.id,
-                    name : call.name,
-                    content : error instanceof Error ? error.message : String(error),
-                    isError : true,
-                    durationMs : Date.now() - startedAt
-                }
+                toolCallId: call.id, name: call.name, content: output,
+                // Current tool contract returns strings for both success and many errors.
+                // Preserve existing behavior; tool-level typed errors are a separate improvement.
+                isError: false, durationMs: Date.now() - startedAt,
+            };
+        } catch (error) {
+            result = {
+                toolCallId: call.id, name: call.name,
+                content: error instanceof Error ? error.message : String(error),
+                isError: true, durationMs: Date.now() - startedAt,
+            };
+        }
+    }
+    return { call, result };
+}
+
+async function executeToolCalls(calls: ToolCall[], config: AgentConfig) {
+    const pending: ScheduledCall[] = calls.map((call, index) => {
+        const tool = config.tools.find((candidate) => candidate.name === call.name);
+        return { call, tool, index, ...classifyTool(call, tool) };
+    });
+    const completed = new Map<number, { call: ToolCall; result: ToolResult }>();
+
+    while (pending.length) {
+        const wave: ScheduledCall[] = [];
+        for (let i = 0; i < pending.length && wave.length < MAX_PARALLEL_TOOLS;) {
+            const candidate = pending[i]!;
+            if (wave.every((selected) => !conflicts(selected, candidate))) {
+                wave.push(candidate);
+                pending.splice(i, 1);
+                // Exclusive operations must execute alone.
+                if (candidate.access === "exclusive") break;
+            } else {
+                i++;
             }
         }
-        return {call, result};
-    }));
-    for (const {call , result} of results ) {
-        await logEvent("tool_call", iteration, {
-            name : call.name,
-            arguments : call.arguments,
-            result : result.content,
-            isError : result.isError,
-            durationMs : result.durationMs,
+
+        // At least one item is always eligible because the first pending item starts a wave.
+        const results = await Promise.all(wave.map(executeOne));
+        for (const entry of results) {
+            const item = wave.find((scheduled) => scheduled.call.id === entry.call.id);
+            if (item) completed.set(item.index, entry);
+        }
+    }
+
+    return calls.map((_, index) => completed.get(index)!);
+}
+
+export async function runLoop(userInput: string, config: AgentConfig) {
+    let message: Message[] = [
+        { role: "system", content: config.systemPrompt },
+        { role: "user", content: userInput },
+    ];
+
+    await logEvent("loop_start", 0, { userInput });
+    let iteration = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    while (iteration < config.maxIterations) {
+        if (shouldCompact(message, config)) {
+            const { messages: compacted, beforeCount, afterCount } = await compactMessages(message, config);
+            message = compacted;
+            await logEvent("context_compacted", iteration, { beforeCount, afterCount });
+        }
+
+        const response = await callModel(message, config);
+        totalInputTokens += response.usage.inputTokens;
+        totalOutputTokens += response.usage.outputTokens;
+
+        await logEvent("model_calls", iteration, {
+            stopReason: response.stopReason,
+            content: response.content,
+            toolCallCount: response.toolCalls.length,
+            usage: response.usage,
         });
 
         message.push({
-            role : "tool",
-            content : result.content,
-            toolCallId : result.toolCallId,
-            name : result.name
-        })
+            role: "assistant",
+            content: response.content ?? "",
+            toolCalls: response.toolCalls.length ? response.toolCalls : undefined,
+        });
+
+        const usage = { inputTokens: totalInputTokens, outputTokens: totalOutputTokens };
+
+        if (response.stopReason === "stop") {
+            await logEvent("loop_end", iteration, {
+                stopReason: "stop", status: "completed", totalIterations: iteration + 1,
+            });
+            return {
+                status: "completed" as const,
+                finalContent: response.content ?? "",
+                message,
+                iteration: iteration + 1,
+                stopReason: response.stopReason,
+                usage,
+            };
+        }
+
+        if (response.stopReason === "length") {
+            await logEvent("loop_end", iteration, {
+                stopReason: "length", status: "incomplete", totalIterations: iteration + 1,
+            });
+            return {
+                status: "incomplete" as const,
+                finalContent: response.content ?? "",
+                message,
+                iteration: iteration + 1,
+                stopReason: response.stopReason,
+                usage,
+            };
+        }
+
+        if (response.stopReason === "error") {
+            throw new Error("Model returned an error stop reason");
+        }
+
+        const results = await executeToolCalls(response.toolCalls, config);
+        for (const { call, result } of results) {
+            await logEvent("tool_call", iteration, {
+                name: call.name,
+                arguments: call.arguments,
+                result: result.content,
+                isError: result.isError,
+                durationMs: result.durationMs,
+            });
+            message.push({
+                role: "tool",
+                content: result.content,
+                toolCallId: result.toolCallId,
+                name: result.name,
+            });
+        }
+        iteration++;
     }
-    iteration++;
- }
- await logEvent("loop_end", iteration, {
-    stopReason : "max-iteration",
-    totalIterations : iteration,
- });
- return {
-    finalContent : "",
-    message,
-    iterations : iteration,
-    stopReason :  "max-iteration",
-    usage : { inputTokens: totalInputTokens, outputTokens: totalOutputTokens }
- }
-   
+
+    await logEvent("loop_end", iteration, { stopReason: "max-iteration", status: "incomplete", totalIterations: iteration });
+    return {
+        status: "incomplete" as const,
+        finalContent: "",
+        message,
+        iterations: iteration,
+        stopReason: "max-iteration",
+        usage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+    };
 }

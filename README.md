@@ -1,29 +1,31 @@
 # shy
 
-A coding agent harness built from scratch in TypeScript — the same shape as tools
-like Claude Code or Devin: a loop that gives an LLM a set of tools (bash, read,
-write, edit, grep), lets it work autonomously toward a task, and traces every
-step. Built to actually understand how these systems work, not just use one.
+A small TypeScript coding-agent harness built to benchmark how much a cheaper,
+smaller model can improve through orchestration: tool selection, context
+management, retries, and verification. The goal is experimental measurement,
+not a production multi-tenant service.
 
 Runs on [Bun](https://bun.com), talks to any OpenAI-compatible chat completions
 API (currently wired to DeepSeek).
 
-## Results
+## Benchmark results (historical; revalidate before comparing)
 
-**Private eval suite:**
+The tables below record results from earlier experiments. They are historical
+claims, not proof that every feature described below exists in the current
+implementation. Re-run the benchmark artifacts against the exact commit and
+record the commit, model identifier, task set, and configuration before using
+these numbers as a current baseline.
+
+**Previously reported private eval suite:**
 
 | Iteration | Passed | Avg Quality (Jev) | Avg Tokens | Avg Time |
 |---|---|---|---|---|
 | Before Jev | 11/11 | — | ~60k/task | ~38s/task |
 | After Jev | 11/11 | 3.41/4 | ~7.6k/task | ~7.6s/task |
 
-Same pass rate, but **83% fewer tokens** and **5× faster** per task. Jev stops
-the agent the moment the task is verified done instead of letting it loop until
-`max-iteration`. Quality scoring now catches what `check.sh` can't — two tasks
-that passed the shell check were flagged by Jev as weak solutions
-(`008-ambiguous-instruction`: guessed correctly but never reasoned about the
-ambiguity; `010-misleading-instruction`: agent was misled by a decoy file but
-happened to fix the right thing anyway).
+These figures describe a previously reported experiment. Do not attribute the
+token or latency changes to the current loop until the Jev integration and
+evaluation path are verified at the commit being benchmarked.
 
 **SWE-bench Lite** (same 18 real GitHub issues, official Docker-based evaluation,
 re-run after each round of harness changes — no task-specific tuning):
@@ -57,31 +59,42 @@ Full reports: `swebench/shy-deepseek.shy-verify-rerun.json` (current),
 earlier baseline in `swebench/shy-deepseek.shy-bigrun-15.json` +
 `shy-deepseek.shy-smoke-test-v2.json`.
 
-## Architecture
+## Current architecture (inspect code for source of truth)
 
 ```
-task ──> system prompt + tools ──> LLM call ──> tool calls?
-                 ▲                                  │
-                 │                                  ▼
-          push results back                   run tools (parallel)
-                 ▲     + Jev tool validation        │
-                 └──────────────────────────────────┘
-                     repeat until Jev confirms done / max iterations
+task -> system prompt + tools -> model call -> tool calls?
+             ^                                  |
+             |                                  v
+       append tool results <- schedule safe tool calls
+             |                                  |
+             +---------- repeat -----------------+
 ```
 
-- **`src/core/loop.ts`** — the agent loop. Calls the model, executes any tool
-  calls it asks for (in parallel via `Promise.all`), feeds results back, repeats.
-  Two Jev decision points sit inside the loop:
-  - **Stop/continue check** — when DeepSeek returns `stop`, Jev reads the last
-    response and recent tool outputs and decides whether the task is genuinely
-    done. If Jev says no (e.g. tests haven't been run yet, confidence is low),
-    the loop continues despite DeepSeek's signal. This replaced the "verify
-    before done" system-prompt rule with a hard programmatic check — cutting
-    wrong fixes and eliminating the runaway loop problem where the agent would
-    repeat the same final message 15+ times until `max-iteration`.
-  - **Tool routing validation** — before executing tool calls, Jev checks whether
-    they make sense for the current task. Warnings are logged; the loop continues
-    either way, but the signal is visible in the trace.
+- **`src/core/loop.ts`** — calls the model, compacts context when the configured
+  estimated-token threshold is reached, executes requested tools, and feeds
+  results back into the conversation. Tool calls are scheduled in bounded waves:
+  recognized read operations may run concurrently, conflicting access to the
+  same file is serialized, and shell/unknown tools run exclusively. This is a
+  conservative in-process policy, not a distributed lock or OS sandbox.
+- **Completion status** — `stop` returns `status: "completed"`; `length` and
+  maximum-iteration exhaustion return `status: "incomplete"`. A model stop
+  reason is not proof that code changes pass tests; benchmark checks remain
+  the objective outcome signal.
+- **`src/core/llm.ts`** — OpenAI-compatible API adapter with bounded retries
+  for selected connection failures, 429 responses, and 5xx errors.
+- **`src/core/context.ts`** — estimates tokens using characters divided by
+  four and summarizes older messages while preserving recent messages. This is
+  an approximation, not the provider's exact token count.
+- **`src/tools/`** — filesystem, search, shell, web-fetch, and sub-agent tools.
+  Shell command pattern checks are guardrails only, not a security sandbox.
+- **`src/trace/logger.ts`** — appends JSONL trace events and emits events in
+  process. Traces are observability data, not durable checkpoints for resuming
+  a crashed run.
+- **Jev integration** — the README previously described Jev stop decisions,
+  tool-routing validation, adaptive compaction, and an eval judge. These claims
+  are not reflected in the inspected `src/core/loop.ts` and
+  `src/core/context.ts` on this branch. Treat Jev integration as unverified /
+  not active in this code path unless it is implemented and covered by tests.
 - **`src/core/llm.ts`** — the only network-touching module. Wraps the OpenAI SDK
   against DeepSeek's compatible endpoint, with retry + exponential backoff on
   transient errors (429 / 5xx / connection timeouts).
@@ -128,60 +141,20 @@ No hallucination possible: it either picks a choice, assigns a score, or returns
 a yes/no probability. Responses arrive in 70–500ms. Input costs $0.042/MTok;
 output is free.
 
-This makes it the right tool for the decision layer of an agent loop — not for
-generating code or reasoning about a codebase, but for answering "is this task
+In earlier experiments, Jev was evaluated for decisions such as "is this task
 done?", "do these tool calls make sense?", "should we compact context now?",
-"why did this eval fail?". Each of those was previously either a string parsed
-from the main LLM (slow, expensive, hallucination-prone) or a hardcoded
-threshold (brittle). Jev handles them in ~100ms at near-zero cost.
+and "why did this eval fail?". However, those decisions are not called by the
+current `src/core/loop.ts` and `src/core/context.ts` inspected for this branch.
+Treat Jev as a previous experiment, not an active runtime dependency, until the
+integration and its tests are restored.
 
-### What Jev does in shy
+### Jev and prior experiments
 
-**1. Stop/continue decisions (`src/core/loop.ts`)**
-
-When DeepSeek says `stop`, Jev checks:
-- Is the task actually complete based on recent tool outputs?
-- Has the agent verified the fix (e.g. re-ran the tests)?
-- How confident are we?
-
-If Jev isn't satisfied, the loop continues. This replaced a soft system-prompt
-rule ("verify before declaring done") with a hard programmatic gate. Before:
-the agent would sometimes declare done without running tests, or loop 15 times
-repeating the same final message until hitting `max-iteration`. After: the agent
-stops exactly once, at the right moment.
-
-BEFORE: stop=max-iteration | 40s | 67,974 tokens (007-fix-bug)
-AFTER: stop=stop | 9s | 10,214 tokens
-
-**2. Tool routing validation (`src/core/loop.ts`)**
-
-Before executing tool calls, Jev checks whether they make sense for the task.
-Warnings are logged as `jev_tool_warning` events in the trace. Currently
-non-blocking (the loop continues either way), but the signal is visible for
-debugging.
-
-**3. Adaptive context compaction (`src/core/context.ts`)**
-
-The old compaction trigger was a fixed token threshold. Jev replaces it with an
-adaptive check in the 65–95% usage range: it looks at what tools were recently
-used, what the last assistant message said, and how many messages are in the
-window before deciding whether to compact and how many recent messages to
-preserve. Below 65% and above 95% of the threshold it short-circuits without
-calling Jev.
-
-**4. Eval judge (`evals/jev-judge.ts`)**
-
-After each eval task, Jev scores the agent's solution independently of
-`check.sh`. It returns:
-- `patch_correct` — did the agent solve the task?
-- `introduces_regression` — does the fix risk breaking something else?
-- `quality` — 0–4 score against a rubric
-- `failure_reason` — one of 8 labeled categories
-- `confidence` — probability of the judgment
-
-This turned a binary pass/fail signal into a diagnostic tool. The failure reason
-breakdown across a full eval run tells you exactly what kind of problem to fix
-next in the harness.
+Jev was explored as a separate decision layer in earlier experiments. The
+current loop and context modules inspected for this branch do not call Jev, and
+the expected `evals/jev-judge.ts` file was not present at the inspected path.
+Therefore the Jev-specific benchmark figures and behavior above are historical
+until the integration, judge, and artifacts are restored and reproducibly tested.
 
 ## Running it
 
@@ -215,11 +188,11 @@ bun run evals/runner.ts
 TASK=007-fix-bug bun evals/runner.ts
 ```
 
-Runs every task in `evals/tasks/`, each in an isolated, cleaned directory, with
-an objective pass/fail via a shell exit code (`check.sh`) and a Jev quality
-judgment. Results are written to `evals/results/`. This suite is what caught
-every real bug in this project — see "What building this actually taught me"
-below.
+Runs tasks in `evals/tasks/` with an objective pass/fail via `check.sh`.
+Results include token usage, duration, stop reason, and error information.
+The current runner does not invoke a Jev quality judge. Keep objective task
+success separate from the model's completion status, and compare results only
+when task fixtures, model, configuration, and source commit are held constant.
 
 ### SWE-bench
 
@@ -280,8 +253,8 @@ tools/ bash, read, write, edit, grep, glob, web_fetch
 trace/ JSONL logger + live event emitter
 prompts/ system prompt
 evals/
-runner.ts isolated-directory eval harness with Jev judgment
-jev-judge.ts Jev-powered quality scorer and failure classifier
+runner.ts task runner with shell-check pass/fail, usage, duration, and stop reason
+(no Jev judge is active in the inspected code path)
 tasks/ 11 tasks: file I/O, bash, grep, bug-fixing, ambiguity,
 misleading instructions, multi-file rename, verify-before-done
 swebench/
